@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from depthpro2_onnx.metrics import compare, merge
-from depthpro2_onnx.runtime import DepthPro2ONNX, to_pixel_values
+from depthpro2_onnx.runtime import load, to_pixel_values
 
 ROOT = Path(__file__).resolve().parent
 GATE_ABS_REL = 0.01
@@ -25,7 +25,7 @@ GATE_DELTA1 = 0.995
 GATED_PRECISIONS = ("fp32", "fp16")
 
 
-def run(graph: DepthPro2ONNX, fixture, refs, ref_precision: str) -> dict:
+def run(graph, fixture, refs, ref_precision: str) -> dict:
     f_px = float(fixture["f_px"])
     clip = to_pixel_values(fixture["clip"])
     photo = to_pixel_values(fixture["photo"])
@@ -55,18 +55,21 @@ def main() -> int:
     parser.add_argument("onnx", type=Path)
     parser.add_argument("--provider", default="cuda", choices=["cpu", "cuda", "tensorrt"])
     parser.add_argument("--json", type=Path, help="write the results here")
+    parser.add_argument("--size", choices=["S", "B"], help="model size, for TensorRT engines")
+    parser.add_argument("--input", default="480x640", help="HxW, for TensorRT engines")
     args = parser.parse_args()
 
-    graph = DepthPro2ONNX(args.onnx, args.provider)
+    graph = load(args.onnx, args.provider)
     config = graph.config
-    size = config["base_model"].rsplit("-", 1)[-1]
-    tag = f"{config['height']}x{config['width']}"
+    # Engines carry no ONNX metadata; their size and input come from the command line.
+    size = config["base_model"].rsplit("-", 1)[-1] if "base_model" in config else args.size
+    tag = f"{config['height']}x{config['width']}" if "height" in config else args.input
     fixture = np.load(ROOT / "fixtures" / f"test_clip_{tag}.npz")
     refs = np.load(ROOT / "fixtures" / "ref_outputs" / f"DepthPro2-{size}_{tag}.npz")
 
     report = {
         "graph": args.onnx.name,
-        "provider": graph.session.get_providers()[0],
+        "provider": graph.provider,
         "config": config,
         "vs_fp32": run(graph, fixture, refs, "fp32"),
         "vs_bf16": run(graph, fixture, refs, "bf16"),

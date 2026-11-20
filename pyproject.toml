@@ -26,7 +26,7 @@ export = [
 
 [dependency-groups]
 dev = ["pytest>=8"]
-bench = ["nvidia-ml-py>=13", "tensorrt-cu12==10.13.3.9"]
+bench = ["nvidia-ml-py>=13", "tensorrt-cu12==10.13.3.9", "polygraphy>=0.49"]
 
 [build-system]
 requires = ["hatchling"]

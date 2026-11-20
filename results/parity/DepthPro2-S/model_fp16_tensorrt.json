@@ -1,0 +1,33 @@
+{
+ "graph": "S_model_fp16.engine",
+ "provider": "TensorRT engine",
+ "config": {
+  "mode": "single",
+  "precision": "fp16",
+  "frames": 1
+ },
+ "vs_fp32": {
+  "abs_rel": 0.0014485469624957957,
+  "delta1": 0.999999323101104,
+  "max_abs_m": 92.73146057128906,
+  "max_abs_near_m": 0.09555244445800781,
+  "cosine": 0.9999301936207305,
+  "valid_px": 2954651,
+  "nonfinite_px": 0
+ },
+ "vs_bf16": {
+  "abs_rel": 0.004124284716883542,
+  "delta1": 0.9999807091584116,
+  "max_abs_m": 270.16383361816406,
+  "max_abs_near_m": 0.24782180786132812,
+  "cosine": 0.9996108420310644,
+  "valid_px": 2954770,
+  "nonfinite_px": 0
+ },
+ "gate": {
+  "abs_rel_lt": 0.01,
+  "delta1_gt": 0.995,
+  "applies": true,
+  "passed": true
+ }
+}

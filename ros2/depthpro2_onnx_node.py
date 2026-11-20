@@ -19,7 +19,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
 
-from depthpro2_onnx.runtime import DepthPro2ONNX, to_pixel_values
+from depthpro2_onnx.runtime import load, to_pixel_values
 
 ENCODINGS = {"rgb8": (3, False), "bgr8": (3, True), "rgba8": (4, False), "bgra8": (4, True)}
 
@@ -107,9 +107,9 @@ class DepthPro2Node(Node):
 
             hf_hub_download(repo, "config.json", revision=revision)
             model_path = hf_hub_download(repo, filename, revision=revision)
-        self.graph = DepthPro2ONNX(model_path, provider)
+        self.graph = load(model_path, provider)
         self.get_logger().info(
-            f"{model_path} on {self.graph.session.get_providers()[0]}, "
+            f"{model_path} on {self.graph.provider}, "
             f"input {self.graph.height}x{self.graph.width}, "
             f"{'stream' if self.graph.is_stream else 'single frame'}"
         )

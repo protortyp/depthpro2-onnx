@@ -1,4 +1,4 @@
-"""ONNX Runtime wrapper for the exported graphs; needs only numpy and onnxruntime."""
+"""Runners for the exported graphs: ONNX Runtime (numpy + onnxruntime) or a TensorRT engine."""
 
 from __future__ import annotations
 
@@ -12,15 +12,13 @@ import onnxruntime as ort
 PROVIDERS = {
     "cpu": ["CPUExecutionProvider"],
     "cuda": ["CUDAExecutionProvider", "CPUExecutionProvider"],
-    "tensorrt": ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"],
 }
 
 
 def load_pip_tensorrt() -> None:
-    """Load the libraries of the ``tensorrt-cu12`` wheel, which ONNX Runtime does not search.
+    """Load the libraries of the ``tensorrt-cu12`` wheel if it is installed.
 
-    ONNX Runtime opens ``libnvinfer.so.10`` by name; once loaded here, that lookup finds it.
-    JetPack's system TensorRT needs none of this and is found on the default library path.
+    JetPack's system TensorRT is on the default library path and needs none of this.
     """
     try:
         import tensorrt_libs
@@ -32,31 +30,26 @@ def load_pip_tensorrt() -> None:
             ctypes.CDLL(str(folder / name), mode=ctypes.RTLD_GLOBAL)
 
 
-def providers_for(name: str, cache_dir: str | Path | None = None) -> list:
+def providers_for(name: str) -> list:
     if name not in PROVIDERS:
         raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}, got {name!r}")
-    if name in ("cuda", "tensorrt") and hasattr(ort, "preload_dlls"):
+    if name == "cuda" and hasattr(ort, "preload_dlls"):
         # Finds the CUDA and cuDNN libraries of pip's nvidia-* wheels when torch, which would
         # otherwise load them, is not imported.
         ort.preload_dlls()
-    providers: list = list(PROVIDERS[name])
-    if name == "tensorrt":
-        load_pip_tensorrt()
-        cache = Path(cache_dir or Path.home() / ".cache" / "depthpro2-onnx" / "trt")
-        cache.mkdir(parents=True, exist_ok=True)
-        providers[0] = (
-            "TensorrtExecutionProvider",
-            {
-                # The FP16 graphs carry their own precisions. With this flag TensorRT may also
-                # run the FP32 attention of block 0 in FP16, which overflows to NaN everywhere.
-                "trt_fp16_enable": False,
-                "trt_engine_cache_enable": True,
-                "trt_engine_cache_path": str(cache),
-                "trt_timing_cache_enable": True,
-                "trt_timing_cache_path": str(cache),
-            },
-        )
-    return providers
+    return list(PROVIDERS[name])
+
+
+def load(path: str | Path, provider: str = "cuda", **kwargs):
+    """A ``TensorRTEngine`` for ``.engine`` files, else a ``DepthPro2ONNX`` on ``provider``."""
+    if str(path).endswith(".engine") or provider == "tensorrt":
+        if not str(path).endswith(".engine"):
+            raise ValueError(
+                "provider tensorrt takes an engine built by jetson/build_tensorrt.sh, not "
+                f"{path}; ONNX Runtime's TensorRT provider gives NaN depth on these graphs"
+            )
+        return TensorRTEngine(path)
+    return DepthPro2ONNX(path, provider, **kwargs)
 
 
 def to_pixel_values(rgb: np.ndarray) -> np.ndarray:
@@ -79,7 +72,6 @@ class DepthPro2ONNX:
         self,
         path: str | Path,
         provider: str = "cuda",
-        cache_dir: str | Path | None = None,
         threads: int | None = None,
         allow_fallback: bool = False,
     ):
@@ -87,9 +79,7 @@ class DepthPro2ONNX:
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         if threads:
             options.intra_op_num_threads = threads
-        self.session = ort.InferenceSession(
-            str(path), options, providers=providers_for(provider, cache_dir)
-        )
+        self.session = ort.InferenceSession(str(path), options, providers=providers_for(provider))
         active, wanted = self.session.get_providers()[0], PROVIDERS[provider][0]
         if active != wanted and not allow_fallback:
             # ONNX Runtime falls back to the next provider with only a log line; a robot
@@ -98,6 +88,7 @@ class DepthPro2ONNX:
                 f"{wanted} is unavailable (session runs on {active}); install its libraries "
                 "or pass allow_fallback=True"
             )
+        self.provider = active
         meta = self.session.get_modelmeta().custom_metadata_map
         self.config = json.loads(meta.get("depthpro2_onnx", "{}"))
         inputs = {i.name: i for i in self.session.get_inputs()}
@@ -152,4 +143,54 @@ class DepthPro2ONNX:
             return np.concatenate([self._run(f[None], f_px) for f in pixel_values])
         if pixel_values.shape[0] != self.frames:
             raise ValueError(f"graph takes {self.frames} frames, got {pixel_values.shape[0]}")
+        return self._run(pixel_values, f_px)
+
+
+class TensorRTEngine:
+    """Runs an engine from ``jetson/build_tensorrt.sh`` with the interface of ``DepthPro2ONNX``.
+
+    Needs ``tensorrt`` and ``polygraphy``. Stream state makes a round trip through host memory
+    each frame; on Jetson, whose GPU shares the host's memory, that copy is cheap.
+    """
+
+    def __init__(self, path: str | Path):
+        load_pip_tensorrt()
+        from polygraphy.backend.trt import EngineFromBytes, TrtRunner
+
+        self.runner = TrtRunner(EngineFromBytes(Path(path).read_bytes()))
+        self.runner.activate()
+        inputs = {
+            name: (np.dtype(dtype), tuple(shape))
+            for name, (dtype, shape) in self.runner.get_input_metadata(
+                use_numpy_dtypes=True
+            ).items()
+        }
+        self.frames, _, self.height, self.width = inputs["pixel_values"][1]
+        self.state_inputs = [n for n in inputs if n.startswith("past_")]
+        self.state_specs = {n: inputs[n] for n in self.state_inputs}
+        precision = "fp16" if "fp16" in Path(path).stem else "fp32"
+        mode = "stream" if self.state_inputs else ("single" if self.frames == 1 else "clip")
+        self.config = {"mode": mode, "precision": precision, "frames": self.frames}
+        if self.state_inputs:
+            self.config["window"] = self.state_specs["past_filled"][1][0]
+        self.provider = "TensorRT engine"
+        self.reset()
+
+    @property
+    def is_stream(self) -> bool:
+        return bool(self.state_inputs)
+
+    def reset(self) -> None:
+        self.state = {n: np.zeros(shape, dtype) for n, (dtype, shape) in self.state_specs.items()}
+
+    def _run(self, pixel_values: np.ndarray, f_px: float) -> np.ndarray:
+        feed = {"pixel_values": pixel_values, "f_px": np.array([f_px], np.float32)} | self.state
+        out = self.runner.infer(feed)
+        self.state = {n: np.array(out[n.replace("past_", "present_", 1)]) for n in self.state}
+        return np.array(out["depth_meters"])
+
+    def infer(self, pixel_values: np.ndarray, f_px: float) -> np.ndarray:
+        pixel_values = np.ascontiguousarray(pixel_values, dtype=np.float32)
+        if self.is_stream:
+            return np.concatenate([self._run(f[None], f_px) for f in pixel_values])
         return self._run(pixel_values, f_px)

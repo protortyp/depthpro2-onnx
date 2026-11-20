@@ -66,11 +66,15 @@ def time_runs(step, warmup: int, iters: int) -> list[float]:
 
 
 def bench_onnx(config: dict, frame: np.ndarray, f_px: float) -> dict:
-    from depthpro2_onnx.runtime import DepthPro2ONNX, to_pixel_values
+    from depthpro2_onnx.runtime import load, to_pixel_values
 
     memory = PeakGpuMemory() if config["provider"] != "cpu" else None
-    graph = DepthPro2ONNX(config["path"], config["provider"], threads=config.get("threads"))
-    providers = graph.session.get_providers()
+    graph = load(
+        config["path"],
+        config["provider"],
+        **({"threads": config["threads"]} if config.get("threads") else {}),
+    )
+    providers = [graph.provider]
     frames = graph.frames
     pixels = to_pixel_values(np.repeat(frame[None], frames, axis=0))
     times = time_runs(lambda: graph.infer(pixels, f_px), config["warmup"], config["iters"])
@@ -280,7 +284,7 @@ def main() -> None:
         if config["runtime"] == "onnx":
             path = Path(config["path"])
             row["disk_mb"] = path.stat().st_size / 1e6
-            report = parity(path, config["provider"])
+            report = parity(path, config["provider"], config["size"])
             row["abs_rel"] = report["vs_fp32"]["abs_rel"] if report else None
         else:
             ref = np.load(
