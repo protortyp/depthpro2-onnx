@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -47,7 +49,15 @@ def git_commit() -> str:
     return result.stdout.strip() or "unknown"
 
 
-def export(module: torch.nn.Module, args: tuple, path: Path, inputs, outputs, meta: dict) -> None:
+def export(
+    module: torch.nn.Module,
+    args: tuple,
+    path: Path,
+    inputs,
+    outputs,
+    meta: dict,
+    unsimplified: Path | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     start = time.time()
     with torch.no_grad():
@@ -63,6 +73,8 @@ def export(module: torch.nn.Module, args: tuple, path: Path, inputs, outputs, me
             optimize=True,
             verbose=False,
         )
+    if unsimplified is not None:
+        shutil.copyfile(path, unsimplified)
     simplify(path)
     model = onnx.load(str(path))
     onnx.helper.set_model_props(
@@ -87,26 +99,26 @@ def simplify(path: Path) -> None:
     onnx.save(model, str(path))
 
 
-def quantize_int8(src: Path, dst: Path) -> None:
-    """Dynamic INT8: MatMul weights per channel, activations per tensor at run time."""
-    from onnxruntime.quantization import QuantType, quantize_dynamic
+def quantize_int8(src: Path, dst: Path, meta: dict) -> None:
+    """Weight-only INT8: MatMul weights in 8 bits, symmetric, per block of 32; activations float.
 
-    quantize_dynamic(
-        src,
-        dst,
-        weight_type=QuantType.QInt8,
-        per_channel=True,
-        op_types_to_quantize=["MatMul"],
-        extra_options={"MatMulConstBOnly": True},
+    Dynamic activation quantization breaks DINOv3: its residual stream carries outliers of 1e3-1e4
+    that per-tensor activation scales cannot hold, and the depth collapses (delta1 < 0.5).
+    ``src`` must be the unsimplified export, whose linear layers are still MatMul, not Gemm.
+    """
+    from onnxruntime.quantization import matmul_nbits_quantizer as nbits
+
+    config = nbits.DefaultWeightOnlyQuantConfig(
+        block_size=32, is_symmetric=True, bits=8, op_types_to_quantize=("MatMul",)
     )
+    quantizer = nbits.MatMulNBitsQuantizer(onnx.load(str(src)), algo_config=config)
+    quantizer.process()
+    quantizer.model.save_model_to_file(str(dst), False)
+    simplify(dst)
     model = onnx.load(str(dst))
-    meta = json.loads({p.key: p.value for p in model.metadata_props}["depthpro2_onnx"])
+    meta = meta | {"precision": "int8", "quantization": "weight-only MatMulNBits, 8 bit, block 32"}
     onnx.helper.set_model_props(
-        model,
-        {
-            "depthpro2_onnx": json.dumps(meta | {"precision": "int8"}, sort_keys=True),
-            "license": LICENSE,
-        },
+        model, {"depthpro2_onnx": json.dumps(meta, sort_keys=True), "license": LICENSE}
     )
     onnx.save(model, str(dst))
     print(f"wrote {dst} ({dst.stat().st_size / 1e6:.1f} MB)", flush=True)
@@ -138,6 +150,8 @@ def main() -> None:
     pixels = lambda t: torch.rand(t, 3, args.height, args.width, device=device)  # noqa: E731
     f_px = torch.tensor([500.0], device=device)
 
+    scratch = Path(tempfile.mkdtemp())
+    unsimplified = scratch / "model.onnx"
     jobs = [("model", "single", 1)]
     jobs += [(f"model_clip{t}", "clip", t) for t in args.clip]
     jobs += [(f"model_stream{w}", "stream", w) for w in args.stream]
@@ -175,12 +189,15 @@ def main() -> None:
                     ["pixel_values", "f_px"],
                     ["depth_meters"],
                     meta,
+                    unsimplified if name == "model" else None,
                 )
             del model, module
             torch.cuda.empty_cache()
 
-    if args.only is None or "model_int8" in args.only:
-        quantize_int8(out / "model.onnx", out / "model_int8.onnx")
+    if unsimplified.exists():
+        meta = base_meta | {"mode": "single", "frames": 1}
+        quantize_int8(unsimplified, out / "model_int8.onnx", meta)
+    shutil.rmtree(scratch)
 
 
 if __name__ == "__main__":
