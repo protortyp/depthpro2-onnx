@@ -73,7 +73,7 @@ I/O:
 
 ## TensorRT and Jetson
 
-On the device: `./build_tensorrt.sh onnx/model_fp16.onnx` ([script](build_tensorrt.sh), `trtexec --stronglyTyped`). Do not use `--fp16` or ONNX Runtime's `trt_fp16_enable`: both run block 0's attention in FP16, its logits (up to 2e6) overflow, and every pixel becomes NaN.
+On the device: `./build_tensorrt.sh onnx/model_fp16.onnx` ([script](build_tensorrt.sh), `trtexec --stronglyTyped`). Do not use `--fp16` or ONNX Runtime's TensorRT provider: both may run block 0's attention (logits up to 2e6) or B's LayerNorms in FP16 and return NaN.
 
 ## ROS 2
 

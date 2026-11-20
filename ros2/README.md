@@ -29,18 +29,20 @@ cd ~/ros2_ws && colcon build --packages-select depthpro2_ros && source install/s
 ros2 launch depthpro2_ros depthpro2.launch.py \
   image_topic:=/camera/color/image_rect camera_info_topic:=/camera/color/camera_info \
   model_repo:=christianengel/DepthPro2-S-ONNX model_file:=onnx/model_stream4_fp16.onnx \
-  provider:=tensorrt publish_pointcloud:=true
+  publish_pointcloud:=true
 ```
 
 | Parameter | Default | |
 | --- | --- | --- |
 | `model_repo`, `model_file`, `model_revision` | `christianengel/DepthPro2-S-ONNX`, `onnx/model_fp16.onnx`, `main` | downloaded once |
 | `model_path` | | local `.onnx`; overrides the above |
-| `provider` | `cuda` | `cuda`, `tensorrt` or `cpu`; fails instead of falling back |
+| `provider` | `cuda` | `cuda` or `cpu` (ONNX Runtime), `tensorrt` (engine); never falls back |
 | `publish_pointcloud`, `pointcloud_stride`, `max_depth` | `false`, `2`, `20.0` | |
 | `log_timing_every` | `300` | frames between timing logs; `0` off |
 
-Stream graphs reset when timestamps go backwards or the camera resolution changes. `provider:=tensorrt` builds an engine on the first start (minutes on a Jetson) and caches it in `~/.cache/depthpro2-onnx/trt`.
+Stream graphs reset when timestamps go backwards or the camera resolution changes.
+
+TensorRT (Jetson): build an engine on the device with [`jetson/build_tensorrt.sh`](../jetson/build_tensorrt.sh), then `provider:=tensorrt model_path:=/path/model_fp16.engine`. Needs JetPack's `python3-libnvinfer` and `pip install polygraphy`.
 
 ## Test
 

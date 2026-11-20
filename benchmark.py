@@ -120,8 +120,9 @@ def run_one(config: dict) -> dict:
     return bench_onnx(config, frame, f_px)
 
 
-def parity(path: Path, provider: str) -> dict | None:
-    out = RESULTS / "parity" / path.parent.parent.name / f"{path.stem}_{provider}.json"
+def parity(path: Path, provider: str, size: str) -> dict | None:
+    stem = path.stem.removeprefix(f"{size}_")
+    out = RESULTS / "parity" / f"DepthPro2-{size}" / f"{stem}_{provider}.json"
     if not out.exists():
         subprocess.run(
             [
@@ -130,6 +131,8 @@ def parity(path: Path, provider: str) -> dict | None:
                 str(path),
                 "--provider",
                 provider,
+                "--size",
+                size,
                 "--json",
                 str(out),
             ],
@@ -148,23 +151,25 @@ def configs(sizes: list[str], build: Path, warmup: int, iters: int, cpu_iters: i
             base | {"name": "PyTorch BF16 (Apple default)", "runtime": "torch", "precision": "bf16"}
         )
         out.append(base | {"name": "PyTorch FP32", "runtime": "torch", "precision": "fp32"})
-        for provider, label in (("cuda", "ORT CUDA"), ("tensorrt", "ORT TensorRT")):
-            for stem, precision in (
-                ("model", "FP32"),
-                ("model_fp16", "FP16"),
-                ("model_int8", "INT8"),
-            ):
-                if provider == "tensorrt" and stem != "model_fp16":
-                    continue
-                out.append(
-                    base
-                    | {
-                        "name": f"{label} {precision}",
-                        "runtime": "onnx",
-                        "provider": provider,
-                        "path": str(onnx / f"{stem}.onnx"),
-                    }
-                )
+        for stem, precision in (("model", "FP32"), ("model_fp16", "FP16"), ("model_int8", "INT8")):
+            onnx_path = str(onnx / f"{stem}.onnx")
+            out.append(
+                base
+                | {
+                    "name": f"ORT CUDA {precision}",
+                    "runtime": "onnx",
+                    "provider": "cuda",
+                    "path": onnx_path,
+                }
+            )
+        for stem, label in (
+            ("model_fp16", "TensorRT FP16 engine"),
+            ("model_stream4_fp16", "TensorRT FP16 engine, stream window 4"),
+        ):
+            engine = str(build / "trt" / f"{size}_{stem}.engine")
+            out.append(
+                base | {"name": label, "runtime": "onnx", "provider": "tensorrt", "path": engine}
+            )
         for stem, label in (
             ("model_stream4_fp16", "ORT CUDA FP16 stream, window 4"),
             ("model_clip4_fp16", "ORT CUDA FP16 clip of 4"),

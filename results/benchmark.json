@@ -24,9 +24,9 @@
    "providers": [
     "torch 2.8.0+cu128 eager"
    ],
-   "ms_per_frame": 10.01872611232102,
-   "p90_ms_per_call": 10.1620800094679,
-   "fps": 99.81308888863636,
+   "ms_per_frame": 10.324318893253803,
+   "p90_ms_per_call": 10.790062369778754,
+   "fps": 96.85868969559122,
    "abs_rel": 0.0030334146938885433
   },
   {
@@ -42,9 +42,9 @@
    "providers": [
     "torch 2.8.0+cu128 eager"
    ],
-   "ms_per_frame": 10.513211018405855,
-   "p90_ms_per_call": 10.619488079100847,
-   "fps": 95.11841798374105,
+   "ms_per_frame": 10.515692993067205,
+   "p90_ms_per_call": 11.608703364618124,
+   "fps": 95.09596758475935,
    "abs_rel": 0.0
   },
   {
@@ -58,12 +58,11 @@
    "frames_per_call": 1,
    "peak_vram_mb": 798.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 11.488846503198147,
-   "p90_ms_per_call": 11.547738080844283,
-   "fps": 87.0409400736297,
+   "ms_per_frame": 11.595836491324008,
+   "p90_ms_per_call": 13.1164490012452,
+   "fps": 86.23784931325989,
    "disk_mb": 98.538398,
    "abs_rel": 0.0003752452654371848
   },
@@ -78,12 +77,11 @@
    "frames_per_call": 1,
    "peak_vram_mb": 548.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 8.3060790784657,
-   "p90_ms_per_call": 8.351836982183158,
-   "fps": 120.39374903046554,
+   "ms_per_frame": 8.761221426539123,
+   "p90_ms_per_call": 9.693017019890249,
+   "fps": 114.13933643668018,
    "disk_mb": 51.191661,
    "abs_rel": 0.000834424455228823
   },
@@ -98,12 +96,11 @@
    "frames_per_call": 1,
    "peak_vram_mb": 796.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 11.747687007300556,
-   "p90_ms_per_call": 11.838685139082372,
-   "fps": 85.12313950640274,
+   "ms_per_frame": 11.794595513492823,
+   "p90_ms_per_call": 12.740612658672038,
+   "fps": 84.7845946777926,
    "disk_mb": 37.530047,
    "abs_rel": 0.004943422918740162
   },
@@ -111,22 +108,39 @@
    "size": "S",
    "warmup": 20,
    "iters": 100,
-   "name": "ORT TensorRT FP16",
+   "name": "TensorRT FP16 engine",
    "runtime": "onnx",
    "provider": "tensorrt",
-   "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-S/onnx/model_fp16.onnx",
+   "path": "/home/chris/dev/mine/depthpro2-onnx/build/trt/S_model_fp16.engine",
    "frames_per_call": 1,
-   "peak_vram_mb": 914.0,
+   "peak_vram_mb": 480.0,
    "providers": [
-    "TensorrtExecutionProvider",
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "TensorRT engine"
    ],
-   "ms_per_frame": 3.3681519562378526,
-   "p90_ms_per_call": 3.3868380123749375,
-   "fps": 296.89871864242633,
-   "disk_mb": 51.191661,
-   "abs_rel": 0.0014503461654721587
+   "ms_per_frame": 3.5998469684273005,
+   "p90_ms_per_call": 3.62989513669163,
+   "fps": 277.78958627146295,
+   "disk_mb": 56.449636,
+   "abs_rel": 0.0014485469624957957
+  },
+  {
+   "size": "S",
+   "warmup": 20,
+   "iters": 100,
+   "name": "TensorRT FP16 engine, stream window 4",
+   "runtime": "onnx",
+   "provider": "tensorrt",
+   "path": "/home/chris/dev/mine/depthpro2-onnx/build/trt/S_model_stream4_fp16.engine",
+   "frames_per_call": 1,
+   "peak_vram_mb": 546.0,
+   "providers": [
+    "TensorRT engine"
+   ],
+   "ms_per_frame": 15.10972110554576,
+   "p90_ms_per_call": 17.098960909061134,
+   "fps": 66.1825584347131,
+   "disk_mb": 56.57002,
+   "abs_rel": 0.0011486102064182603
   },
   {
    "size": "S",
@@ -139,12 +153,11 @@
    "frames_per_call": 1,
    "peak_vram_mb": 1378.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 11.16658910177648,
-   "p90_ms_per_call": 11.233562882989645,
-   "fps": 89.55286084995382,
+   "ms_per_frame": 11.500494554638863,
+   "p90_ms_per_call": 12.853341083973646,
+   "fps": 86.95278235635858,
    "disk_mb": 50.586135,
    "abs_rel": 0.00047446920618677906
   },
@@ -159,12 +172,11 @@
    "frames_per_call": 4,
    "peak_vram_mb": 2352.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 8.726499712793157,
-   "p90_ms_per_call": 35.1625471143052,
-   "fps": 114.59348340251334,
+   "ms_per_frame": 8.833231404423714,
+   "p90_ms_per_call": 37.14716511312872,
+   "fps": 113.20885350056565,
    "disk_mb": 53.090716,
    "abs_rel": 0.0005177166854044883
   },
@@ -181,9 +193,9 @@
    "providers": [
     "CPUExecutionProvider"
    ],
-   "ms_per_frame": 239.20702352188528,
-   "p90_ms_per_call": 243.6472198460251,
-   "fps": 4.180479257159057,
+   "ms_per_frame": 259.4042191049084,
+   "p90_ms_per_call": 272.21817050594836,
+   "fps": 3.8549874148175647,
    "disk_mb": 98.538398,
    "abs_rel": 1.97176575144639e-06
   },
@@ -200,9 +212,9 @@
    "providers": [
     "CPUExecutionProvider"
    ],
-   "ms_per_frame": 253.71471303515136,
-   "p90_ms_per_call": 260.7048001140356,
-   "fps": 3.941434803039795,
+   "ms_per_frame": 303.10178198851645,
+   "p90_ms_per_call": 309.7991244867444,
+   "fps": 3.2992217777125665,
    "disk_mb": 37.530047,
    "abs_rel": 0.0049038516914502546
   },
@@ -219,9 +231,9 @@
    "providers": [
     "torch 2.8.0+cu128 eager"
    ],
-   "ms_per_frame": 11.285662068985403,
-   "p90_ms_per_call": 11.528076115064323,
-   "fps": 88.60800490811626,
+   "ms_per_frame": 11.54831051826477,
+   "p90_ms_per_call": 12.236736016348004,
+   "fps": 86.59275297615207,
    "abs_rel": 0.002165051487158712
   },
   {
@@ -237,9 +249,9 @@
    "providers": [
     "torch 2.8.0+cu128 eager"
    ],
-   "ms_per_frame": 24.34964699205011,
-   "p90_ms_per_call": 24.55476811155677,
-   "fps": 41.06835718507496,
+   "ms_per_frame": 24.934814078733325,
+   "p90_ms_per_call": 25.604372471570972,
+   "fps": 40.10457013404768,
    "abs_rel": 0.0
   },
   {
@@ -251,14 +263,13 @@
    "provider": "cuda",
    "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-B/onnx/model.onnx",
    "frames_per_call": 1,
-   "peak_vram_mb": 1308.0,
+   "peak_vram_mb": 1314.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 21.776617038995028,
-   "p90_ms_per_call": 21.910919179208577,
-   "fps": 45.92081489100518,
+   "ms_per_frame": 22.397775435820222,
+   "p90_ms_per_call": 23.474852251820266,
+   "fps": 44.64729110555882,
    "disk_mb": 387.313362,
    "abs_rel": 0.00024140785123105265
   },
@@ -271,14 +282,13 @@
    "provider": "cuda",
    "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-B/onnx/model_fp16.onnx",
    "frames_per_call": 1,
-   "peak_vram_mb": 1318.0,
+   "peak_vram_mb": 1322.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 14.53389204107225,
-   "p90_ms_per_call": 14.867956028319895,
-   "fps": 68.80469437739295,
+   "ms_per_frame": 14.893101528286934,
+   "p90_ms_per_call": 15.770608256570995,
+   "fps": 67.14518114985442,
    "disk_mb": 199.273471,
    "abs_rel": 0.0006799713758779478
   },
@@ -293,12 +303,11 @@
    "frames_per_call": 1,
    "peak_vram_mb": 1308.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 22.71596691571176,
-   "p90_ms_per_call": 22.959819133393466,
-   "fps": 44.021898944937206,
+   "ms_per_frame": 23.138331016525626,
+   "p90_ms_per_call": 25.121290655806664,
+   "fps": 43.21832889700601,
    "disk_mb": 143.201546,
    "abs_rel": 0.003040940717182659
   },
@@ -306,22 +315,39 @@
    "size": "B",
    "warmup": 20,
    "iters": 100,
-   "name": "ORT TensorRT FP16",
+   "name": "TensorRT FP16 engine",
    "runtime": "onnx",
    "provider": "tensorrt",
-   "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-B/onnx/model_fp16.onnx",
+   "path": "/home/chris/dev/mine/depthpro2-onnx/build/trt/B_model_fp16.engine",
    "frames_per_call": 1,
-   "peak_vram_mb": 514.0,
+   "peak_vram_mb": 700.0,
    "providers": [
-    "TensorrtExecutionProvider",
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "TensorRT engine"
    ],
-   "ms_per_frame": 3.37920687161386,
-   "p90_ms_per_call": 3.5213579423725605,
-   "fps": 295.9274285336708,
-   "disk_mb": 199.273471,
-   "abs_rel": Infinity
+   "ms_per_frame": 7.117946515791118,
+   "p90_ms_per_call": 7.694126036949456,
+   "fps": 140.48995700958227,
+   "disk_mb": 203.542652,
+   "abs_rel": 0.0009245794637817225
+  },
+  {
+   "size": "B",
+   "warmup": 20,
+   "iters": 100,
+   "name": "TensorRT FP16 engine, stream window 4",
+   "runtime": "onnx",
+   "provider": "tensorrt",
+   "path": "/home/chris/dev/mine/depthpro2-onnx/build/trt/B_model_stream4_fp16.engine",
+   "frames_per_call": 1,
+   "peak_vram_mb": 830.0,
+   "providers": [
+    "TensorRT engine"
+   ],
+   "ms_per_frame": 38.85963500943035,
+   "p90_ms_per_call": 45.338349463418126,
+   "fps": 25.733643657675188,
+   "disk_mb": 203.500628,
+   "abs_rel": 0.0008881930364593986
   },
   {
    "size": "B",
@@ -332,14 +358,13 @@
    "provider": "cuda",
    "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-B/onnx/model_stream4_fp16.onnx",
    "frames_per_call": 1,
-   "peak_vram_mb": 2480.0,
+   "peak_vram_mb": 2472.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 19.869415438733995,
-   "p90_ms_per_call": 20.0633208733052,
-   "fps": 50.328606952903705,
+   "ms_per_frame": 21.71800099313259,
+   "p90_ms_per_call": 23.762308387085795,
+   "fps": 46.0447533967886,
    "disk_mb": 198.667945,
    "abs_rel": 0.0005166005587266637
   },
@@ -352,14 +377,13 @@
    "provider": "cuda",
    "path": "/home/chris/dev/mine/depthpro2-onnx/build/DepthPro2-B/onnx/model_clip4_fp16.onnx",
    "frames_per_call": 4,
-   "peak_vram_mb": 5426.0,
+   "peak_vram_mb": 5430.0,
    "providers": [
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider"
+    "CUDAExecutionProvider"
    ],
-   "ms_per_frame": 17.067011765902862,
-   "p90_ms_per_call": 68.59135692939162,
-   "fps": 58.59256521975562,
+   "ms_per_frame": 19.200712587917224,
+   "p90_ms_per_call": 87.92746795807035,
+   "fps": 52.08140038663398,
    "disk_mb": 201.184207,
    "abs_rel": 0.0005866795325666571
   }
