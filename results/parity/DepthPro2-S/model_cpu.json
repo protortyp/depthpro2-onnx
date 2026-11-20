@@ -1,0 +1,40 @@
+{
+ "graph": "model.onnx",
+ "provider": "CPUExecutionProvider",
+ "config": {
+  "base_model": "apple/DepthPro2-S",
+  "base_revision": "30e647174773e3bdf5ab5dcc2a815c38cec5fdd8",
+  "exporter_commit": "96c4167-dirty",
+  "focal_estimator_removed": true,
+  "frames": 1,
+  "height": 480,
+  "mode": "single",
+  "opset": 18,
+  "precision": "fp32",
+  "width": 640
+ },
+ "vs_fp32": {
+  "abs_rel": 1.97176575144639e-06,
+  "delta1": 1.0,
+  "max_abs_m": 0.1208038330078125,
+  "max_abs_near_m": 0.00015544891357421875,
+  "cosine": 0.9999999998313649,
+  "valid_px": 2954651,
+  "nonfinite_px": 0
+ },
+ "vs_bf16": {
+  "abs_rel": 0.003906928630518616,
+  "delta1": 0.9999868010031238,
+  "max_abs_m": 235.55287170410156,
+  "max_abs_near_m": 0.21412277221679688,
+  "cosine": 0.999687533457169,
+  "valid_px": 2954770,
+  "nonfinite_px": 0
+ },
+ "gate": {
+  "abs_rel_lt": 0.01,
+  "delta1_gt": 0.995,
+  "applies": true,
+  "passed": true
+ }
+}

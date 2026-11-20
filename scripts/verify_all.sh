@@ -20,7 +20,7 @@ for dir in build/DepthPro2-*/onnx; do
       python3 - "$out" "$verdict" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1])); v = d["vs_fp32"]
-print(f"{sys.argv[2]:4} {d['graph']:<26} {d['provider']:<22} AbsRel {v['abs_rel']:.5f} "
+print(f"{sys.argv[2]:4} {sys.argv[1].split('/')[-2]:<12} {d['graph']:<26} {d['provider']:<22} AbsRel {v['abs_rel']:.5f} "
       f"delta1 {v['delta1']:.5f} near-max {v['max_abs_near_m']:.3f} m")
 PY
     done

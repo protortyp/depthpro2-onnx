@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import json
 from pathlib import Path
 
@@ -15,21 +16,40 @@ PROVIDERS = {
 }
 
 
+def load_pip_tensorrt() -> None:
+    """Load the libraries of the ``tensorrt-cu12`` wheel, which ONNX Runtime does not search.
+
+    ONNX Runtime opens ``libnvinfer.so.10`` by name; once loaded here, that lookup finds it.
+    JetPack's system TensorRT needs none of this and is found on the default library path.
+    """
+    try:
+        import tensorrt_libs
+    except ImportError:
+        return
+    folder = Path(tensorrt_libs.__file__).parent
+    for name in ("libnvinfer.so.10", "libnvinfer_plugin.so.10", "libnvonnxparser.so.10"):
+        if (folder / name).exists():
+            ctypes.CDLL(str(folder / name), mode=ctypes.RTLD_GLOBAL)
+
+
 def providers_for(name: str, cache_dir: str | Path | None = None) -> list:
     if name not in PROVIDERS:
         raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}, got {name!r}")
     if name in ("cuda", "tensorrt") and hasattr(ort, "preload_dlls"):
-        # Finds the CUDA, cuDNN and TensorRT libraries of pip's nvidia-* wheels when torch,
-        # which would otherwise load them, is not imported.
+        # Finds the CUDA and cuDNN libraries of pip's nvidia-* wheels when torch, which would
+        # otherwise load them, is not imported.
         ort.preload_dlls()
     providers: list = list(PROVIDERS[name])
     if name == "tensorrt":
+        load_pip_tensorrt()
         cache = Path(cache_dir or Path.home() / ".cache" / "depthpro2-onnx" / "trt")
         cache.mkdir(parents=True, exist_ok=True)
         providers[0] = (
             "TensorrtExecutionProvider",
             {
-                "trt_fp16_enable": True,
+                # The FP16 graphs carry their own precisions. With this flag TensorRT may also
+                # run the FP32 attention of block 0 in FP16, which overflows to NaN everywhere.
+                "trt_fp16_enable": False,
                 "trt_engine_cache_enable": True,
                 "trt_engine_cache_path": str(cache),
                 "trt_timing_cache_enable": True,
@@ -61,6 +81,7 @@ class DepthPro2ONNX:
         provider: str = "cuda",
         cache_dir: str | Path | None = None,
         threads: int | None = None,
+        allow_fallback: bool = False,
     ):
         options = ort.SessionOptions()
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -69,6 +90,14 @@ class DepthPro2ONNX:
         self.session = ort.InferenceSession(
             str(path), options, providers=providers_for(provider, cache_dir)
         )
+        active, wanted = self.session.get_providers()[0], PROVIDERS[provider][0]
+        if active != wanted and not allow_fallback:
+            # ONNX Runtime falls back to the next provider with only a log line; a robot
+            # silently running on the CPU at a tenth of the frame rate is worse than an error.
+            raise RuntimeError(
+                f"{wanted} is unavailable (session runs on {active}); install its libraries "
+                "or pass allow_fallback=True"
+            )
         meta = self.session.get_modelmeta().custom_metadata_map
         self.config = json.loads(meta.get("depthpro2_onnx", "{}"))
         inputs = {i.name: i for i in self.session.get_inputs()}
