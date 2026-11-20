@@ -10,6 +10,7 @@ import torch
 from depth_pro_2 import DepthPro2
 from depth_pro_2.model import IMAGENET_MEAN, IMAGENET_STD, INPUT_MULTIPLE
 from depth_pro_2.network.encoder import eva_finish, eva_qkv_rope
+from depth_pro_2.network.fov import MAX_ASPECT, FOVEstimator
 from torch import nn
 from torch.nn import functional as F
 
@@ -191,3 +192,73 @@ class StreamDepth(_Normalize):
         pyramid = encoder.reassemble_tokens(features, self.grid)
         inverse_depth = self.model.head(self.model.decoder(pyramid).float())[:, 0]
         return (to_meters(inverse_depth, f_px, self.width), *new_state)
+
+
+def load_focal(device: str | torch.device = "cpu") -> FOVEstimator:
+    """Apple's field-of-view network (``apple/DepthPro2-focal``) in float32, eval mode."""
+    from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+
+    repo, revision = FOCAL_CHECKPOINT
+    fov = FOVEstimator()
+    fov.load_state_dict(load_file(hf_hub_download(repo, "model.safetensors", revision=revision)))
+    return fov.to(device).eval()
+
+
+def focal_to_fp16(fov: FOVEstimator) -> FOVEstimator:
+    """Cast the trunk to float16 in place; as in ``to_fp16``, the overflowing parts stay fp32."""
+    fov.trunk.half()
+    fov.trunk.rope.float()
+    for idx in FP32_ATTENTION_BLOCKS:
+        block = fov.trunk.blocks[idx]
+        block.attn = Fp32Attention(block.attn)
+    return fov
+
+
+class FocalLength(nn.Module):
+    """One frame ``(1, 3, H, W)`` RGB in [0, 1] to ``f_px`` ``(1,)`` and FoV ``(1, 2)`` degrees.
+
+    Valid without Apple's resize only where ``FOVEstimator.input_size`` returns the frame's own
+    size and its aspect is at most 16:9, which ``check_focal_size`` asserts.
+    """
+
+    def __init__(self, fov: FOVEstimator):
+        super().__init__()
+        self.fov = fov
+        self.register_buffer("mean", torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1), persistent=False)
+        self.register_buffer("std", torch.tensor(IMAGENET_STD).view(1, 3, 1, 1), persistent=False)
+
+    def forward(self, pixel_values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        fov = self.fov
+        dtype = fov.trunk.patch_embed.proj.weight.dtype
+        tokens, grid_size = fov.encode(((pixel_values - self.mean) / self.std).to(dtype))
+        logits = fov.head(tokens, grid_size)
+        fov_deg = fov.min_fov_deg + torch.sigmoid(logits) * (fov.max_fov_deg - fov.min_fov_deg)
+        height, width = pixel_values.shape[-2:]
+        # Apple's median_focal_length_px for one frame: the shorter side's angle sets the focal.
+        # cos/sin rather than 1/tan: ONNX Runtime has no CUDA kernel for Tan.
+        side, angle = (width, fov_deg[:, 0]) if width < height else (height, fov_deg[:, 1])
+        half = torch.deg2rad(angle) / 2.0
+        f_px = 0.5 * side * torch.cos(half) / torch.sin(half)
+        return f_px, fov_deg
+
+
+def check_focal_size(height: int, width: int) -> None:
+    fov = FOVEstimator.__new__(FOVEstimator)
+    if FOVEstimator.input_size(fov, height, width) != (height, width):
+        raise ValueError(f"{height}x{width} would be resized by the focal-length network")
+    if max(height, width) > MAX_ASPECT * min(height, width):
+        raise ValueError(f"{height}x{width} is wider than 16:9 and would be cropped")
+
+
+class AutoDepth(nn.Module):
+    """A photo ``(1, 3, H, W)`` RGB in [0, 1] to depth ``(1, H, W)`` in meters and its ``f_px``."""
+
+    def __init__(self, model: DepthPro2, fov: FOVEstimator):
+        super().__init__()
+        self.focal = FocalLength(fov)
+        self.depth = ClipDepth(model)
+
+    def forward(self, pixel_values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        f_px, _ = self.focal(pixel_values)
+        return self.depth(pixel_values, f_px.float()), f_px

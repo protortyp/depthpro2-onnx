@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Depth Pro 2 ONNX, focal-free (unofficial)</title>
+<title>Depth Pro 2 ONNX in the browser (unofficial)</title>
 <style>
   :root { color-scheme: dark; --bg: #1a1a19; --panel: #232322; --text: #f0efec; --muted: #c3c2b7;
           --line: #3a3a37; --accent: #3987e5; }
@@ -34,21 +34,22 @@
 </head>
 <body>
 <main>
-  <h1>Depth Pro 2 ONNX, focal-free (unofficial)</h1>
-  <p class="lead">Metric depth from one photo and a focal length you already know, running in your
-    browser with ONNX Runtime Web. Nothing is uploaded.</p>
-  <p class="lead"><a href="https://huggingface.co/christianengel/DepthPro2-S-ONNX">Model</a> ·
+  <h1>Depth Pro 2 ONNX in the browser (unofficial)</h1>
+  <p class="lead">Metric depth in meters from one photo, running in your browser with ONNX Runtime
+    Web. Nothing is uploaded. The focal length is estimated, or give it if you know it.</p>
+  <p class="lead"><a href="https://huggingface.co/christianengel/DepthPro2-focal-ONNX">Auto model</a> · <a href="https://huggingface.co/christianengel/DepthPro2-S-ONNX">Focal-free model</a> ·
     <a href="https://github.com/protortyp/depthpro2-onnx">Code, ROS 2 node, TensorRT</a></p>
 
   <div class="controls">
     <label>Photo <input type="file" id="file" accept="image/*"></label>
     <label>Focal length as
       <select id="focalMode">
+        <option value="auto">estimate it (focal network)</option>
         <option value="fov">horizontal FOV (degrees)</option>
         <option value="fx">fx in pixels of the photo</option>
       </select>
     </label>
-    <label>Value <input type="number" id="focal" value="65.6" step="0.1" min="0.1"></label>
+    <label>Value <input type="number" id="focal" value="65.6" step="0.1" min="0.1" disabled></label>
     <label>Size
       <select id="size">
         <option value="480x640">480x640 (4:3)</option>
@@ -66,7 +67,8 @@
       <figcaption>Depth, red near, blue far. Hover for meters. <span id="readout"></span></figcaption></figure>
   </div>
 
-  <p class="note">DepthPro2-S (24M parameters), FP16 graph, focal-length network removed.
+  <p class="note">DepthPro2-S (24M parameters), FP16. "Estimate it" adds Apple's 23.5M-parameter
+    focal-length network; it can be off on close-ups and unusual lenses, so give the focal length when you know it.
     Weights: Apple Machine Learning Research Model License, <strong>non-commercial research use
     only</strong>. Not affiliated with or endorsed by Apple. Example photo: Apple's
     <a href="https://github.com/apple-aiml-research/ml-depth-pro-2">ml-depth-pro-2</a> sample, loaded from GitHub.</p>
@@ -75,6 +77,7 @@
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/ort.webgpu.min.js"></script>
 <script>
 const REPO = "https://huggingface.co/christianengel/DepthPro2-S-ONNX/resolve/main/";
+const FOCAL_REPO = "https://huggingface.co/christianengel/DepthPro2-focal-ONNX/resolve/main/";
 const EXAMPLE = "https://raw.githubusercontent.com/apple-aiml-research/ml-depth-pro-2/aa389cb/assets/example.jpg";
 const $ = (id) => document.getElementById(id);
 const sessions = {};
@@ -84,19 +87,22 @@ ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/di
 
 function status(text) { $("status").textContent = text; }
 
-async function session(size) {
-  if (sessions[size]) return sessions[size];
+async function session(size, auto) {
+  const key = `${size}/${auto}`;
+  if (sessions[key]) return sessions[key];
+  const repo = auto ? FOCAL_REPO : REPO;
   // config.json first: the Hub counts a model download by this file.
-  await fetch(REPO + "config.json");
-  const file = size === "480x640" ? "onnx/model_fp16.onnx" : `onnx/${size}/model_fp16.onnx`;
-  status(`Downloading ${file} (51 MB, cached by the browser afterwards)…`);
-  const bytes = new Uint8Array(await (await fetch(REPO + file)).arrayBuffer());
+  await fetch(repo + "config.json");
+  const dir = size === "480x640" ? "onnx/" : `onnx/${size}/`;
+  const file = dir + (auto ? "auto_s_fp16.onnx" : "model_fp16.onnx");
+  status(`Downloading ${file} (${auto ? 104 : 51} MB, cached by the browser afterwards)…`);
+  const bytes = new Uint8Array(await (await fetch(repo + file)).arrayBuffer());
   const providers = "gpu" in navigator ? ["webgpu", "wasm"] : ["wasm"];
   for (const ep of providers) {
     try {
-      sessions[size] = await ort.InferenceSession.create(bytes, { executionProviders: [ep] });
+      sessions[key] = await ort.InferenceSession.create(bytes, { executionProviders: [ep] });
       backend = ep;
-      return sessions[size];
+      return sessions[key];
     } catch (err) { console.warn(`${ep} failed`, err); }
   }
   throw new Error("No execution provider could load the model.");
@@ -156,22 +162,25 @@ async function run() {
   $("run").disabled = true;
   try {
     const [h, w] = $("size").value.split("x").map(Number);
-    const sess = await session($("size").value);
+    const auto = $("focalMode").value === "auto";
+    const sess = await session($("size").value, auto);
     const { pixels, scale } = coverCrop(image, h, w);
     const value = Number($("focal").value);
-    const fPx = $("focalMode").value === "fx" ? value * scale : 0.5 * w / Math.tan(value * Math.PI / 360);
+    let fPx = $("focalMode").value === "fx" ? value * scale : 0.5 * w / Math.tan(value * Math.PI / 360);
     const chw = new Float32Array(3 * h * w);
     for (let i = 0; i < h * w; i++) for (let c = 0; c < 3; c++) chw[c * h * w + i] = pixels[4 * i + c] / 255;
     status(`Running on ${backend}…`);
     const start = performance.now();
-    const result = await sess.run({
-      pixel_values: new ort.Tensor("float32", chw, [1, 3, h, w]),
-      f_px: new ort.Tensor("float32", Float32Array.of(fPx), [1]),
-    });
+    const feeds = { pixel_values: new ort.Tensor("float32", chw, [1, 3, h, w]) };
+    if (!auto) feeds.f_px = new ort.Tensor("float32", Float32Array.of(fPx), [1]);
+    const result = await sess.run(feeds);
+    if (auto) fPx = result.f_px.data[0];
     const ms = performance.now() - start;
     depth = { values: result.depth_meters.data, h, w };
     const s = drawDepth(depth.values, h, w);
-    status(`${backend}, ${ms.toFixed(0)} ms. f_px ${fPx.toFixed(1)}. Depth 2nd-98th percentile ` +
+    const hfov = 2 * Math.atan(w / (2 * fPx)) * 180 / Math.PI;
+    status(`${backend}, ${ms.toFixed(0)} ms. f_px ${fPx.toFixed(1)}` +
+           `${auto ? ` (estimated, horizontal FOV ${hfov.toFixed(1)}°)` : ""}. Depth 2nd-98th percentile ` +
            `${s.near.toFixed(2)}-${s.far.toFixed(2)} m, median ${s.median.toFixed(2)} m.`);
   } catch (err) {
     status(`Error: ${err.message}`);
@@ -198,12 +207,18 @@ $("file").addEventListener("change", async (e) => {
 });
 $("size").addEventListener("change", () => { if (image) coverCrop(image, ...$("size").value.split("x").map(Number)); });
 $("run").addEventListener("click", run);
+$("focalMode").addEventListener("change", () => {
+  const mode = $("focalMode").value;
+  $("focal").disabled = mode === "auto";
+  if (mode === "fov") $("focal").value = 65.6;
+  if (mode === "fx" && image) $("focal").value = Math.round(0.5 * image.naturalWidth / Math.tan(65.6 * Math.PI / 360));
+});
 
 (async () => {
   try {
     image = await loadImage(EXAMPLE);
     coverCrop(image, 480, 640);
-    status("Example loaded (horizontal FOV 65.6°). Press Estimate depth, or pick your own photo.");
+    status("Example loaded. Press Estimate depth, or pick your own photo.");
   } catch {
     status("Pick a photo to start.");
   }

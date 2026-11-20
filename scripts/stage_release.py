@@ -155,6 +155,13 @@ def fill(template: str, values: dict) -> str:
 
 
 def main() -> None:
+    import sys
+
+    if "--focal" in sys.argv:
+        out = stage_focal()
+        total = sum(f.stat().st_size for f in out.rglob("*") if f.is_file()) / 1e6
+        print(f"staged {out} ({total:.0f} MB)")
+        return
     for size in CHECKPOINTS:
         out = stage(size)
         template = ROOT / "release_templates" / "MODEL_CARD.md"
@@ -193,6 +200,134 @@ def card_values(size: str, out: Path) -> dict:
         "ort": env["onnxruntime"],
         "github": GITHUB,
     }
+
+
+FOCAL_EXAMPLE = '''"""Metric depth and the focal length from one photo, no calibration."""
+
+import json
+
+import numpy as np
+import onnxruntime as ort
+from huggingface_hub import hf_hub_download
+from PIL import Image
+
+repo = "{repo}"
+config = json.load(open(hf_hub_download(repo, "config.json")))
+height, width = config["input"]["height"], config["input"]["width"]
+session = ort.InferenceSession(
+    hf_hub_download(repo, "onnx/auto_s_fp16.onnx"),
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+
+image = Image.open("photo.jpg").convert("RGB")
+scale = max(width / image.width, height / image.height)
+size = (max(width, round(image.width * scale)), max(height, round(image.height * scale)))
+left, top = (size[0] - width) // 2, (size[1] - height) // 2
+image = image.resize(size, Image.Resampling.LANCZOS).crop((left, top, left + width, top + height))
+
+pixels = np.asarray(image, np.float32).transpose(2, 0, 1)[None] / 255
+depth, f_px = session.run(None, {"pixel_values": pixels})
+print("depth (m):", depth.shape, float(np.median(depth[np.isfinite(depth)])))
+print("focal length of photo.jpg in pixels:", float(f_px[0]) / scale)
+'''
+
+FOCAL_FILES = {
+    "focal": ("f_px, fov_deg", "fp32"),
+    "focal_fp16": ("f_px, fov_deg", "fp16"),
+    "auto_s_fp16": ("depth (S) + f_px", "fp16"),
+    "auto_b_fp16": ("depth (B) + f_px", "fp16"),
+}
+
+
+def stage_focal() -> Path:
+    from depthpro2_onnx.model import FOCAL_CHECKPOINT
+
+    repo, revision = FOCAL_CHECKPOINT
+    name = "DepthPro2-focal-ONNX"
+    out = ROOT / "release" / name
+    if out.exists():
+        shutil.rmtree(out)
+    src = ROOT / "build" / "DepthPro2-focal" / "onnx"
+    parity = ROOT / "results" / "parity" / "DepthPro2-focal"
+    variants, rows = {}, []
+    for res in [DEFAULT_SIZE, *EXTRA_SIZES]:
+        prefix = "" if res == DEFAULT_SIZE else f"{res}/"
+        for stem, (outputs, precision) in FOCAL_FILES.items():
+            graph = src / f"{prefix}{stem}.onnx"
+            target = out / "onnx" / f"{prefix}{stem}.onnx"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(graph, target)
+            report = json.loads(
+                (parity / f"{prefix.replace('/', '_')}{stem}_cuda.json").read_text()
+            )
+            height, width = (int(v) for v in res.split("x"))
+            entry = {
+                "outputs": outputs,
+                "precision": precision,
+                "height": height,
+                "width": width,
+                "size_mb": round(graph.stat().st_size / 1e6, 1),
+                "focal_max_rel_vs_pytorch_fp32": round(report["focal_max_rel"], 6),
+            }
+            depth = report.get("depth_vs_fp32")
+            if depth:
+                entry["depth_abs_rel_vs_pytorch_fp32"] = round(depth["abs_rel"], 6)
+            variants[f"onnx/{prefix}{stem}.onnx"] = entry
+            depth_col = f"{depth['abs_rel']:.4f}" if depth else "-"
+            rows.append(
+                f"| `onnx/{prefix}{stem}.onnx` | {res} | {outputs} | {precision.upper()} "
+                f"| {entry['size_mb']:.0f} | {100 * entry['focal_max_rel_vs_pytorch_fp32']:.2f}% "
+                f"| {depth_col} |"
+            )
+
+    shutil.copy2(hf_hub_download(repo, "LICENSE", revision=revision), out / "LICENSE")
+    shutil.copy2(ROOT / "jetson" / "build_tensorrt.sh", out / "build_tensorrt.sh")
+    config = {
+        "architecture": "DepthPro2 field-of-view estimator (DINOv3 ViT-S/16 + attention head)",
+        "model_type": "depthpro2-focal",
+        "base_model": repo,
+        "base_revision": revision,
+        "depth_models": {s: {"repo": r, "revision": v} for s, (r, v) in CHECKPOINTS.items()},
+        "parameters": sum(
+            get_safetensors_metadata(repo, revision=revision).parameter_count.values()
+        ),
+        "input": {
+            "height": int(DEFAULT_SIZE.split("x")[0]),
+            "width": int(DEFAULT_SIZE.split("x")[1]),
+            "other_sizes": EXTRA_SIZES,
+            "pixel_values": "float32 (1, 3, H, W), RGB in [0, 1], not normalized",
+        },
+        "output": {
+            "f_px": "float32 (1,), focal length in pixels of pixel_values",
+            "fov_deg": "float32 (1, 2), horizontal and vertical field of view (focal graphs)",
+            "depth_meters": "float32 (1, H, W), z-depth in meters (auto graphs)",
+        },
+        "variants": variants,
+        "opset": 18,
+        "exporter": GITHUB,
+        "license": "apple-amlr",
+    }
+    (out / "config.json").write_text(json.dumps(config, indent=2) + "\n")
+    (out / "example.py").write_text(FOCAL_EXAMPLE.replace("{repo}", f"{HF_USER}/{name}"))
+
+    bench_path = ROOT / "results" / "focal_benchmark.json"
+    bench = json.loads(bench_path.read_text()) if bench_path.exists() else []
+    table = ["| Graph | Runtime | ms/frame | Peak VRAM (MB) |", "| --- | --- | ---: | ---: |"]
+    for r in bench:
+        vram = f"{r['peak_vram_mb']:.0f}" if r.get("peak_vram_mb") else "-"
+        table.append(f"| {r['graph']} | {r['runtime']} | {r['ms']:.1f} | {vram} |")
+    env = json.loads((ROOT / "results" / "benchmark.json").read_text())["environment"]
+    values = {
+        "repo": f"{HF_USER}/{name}",
+        "variants_table": "\n".join(rows),
+        "benchmark_table": "\n".join(table),
+        "gpu": env["gpu"],
+        "focal_revision": revision[:7],
+        "github": GITHUB,
+    }
+    card = ROOT / "release_templates" / "FOCAL_CARD.md"
+    (out / "README.md").write_text(fill(card.read_text(), values))
+    return out
 
 
 if __name__ == "__main__":

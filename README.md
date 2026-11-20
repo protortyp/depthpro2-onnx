@@ -1,6 +1,17 @@
 # Depth Pro 2 ONNX
 
-Focal-free ONNX, TensorRT and ROS 2 packaging for Apple's [Depth Pro 2](https://github.com/apple-aiml-research/ml-depth-pro-2) S and B. Pass `f_px` from `CameraInfo`; the 23.5M-parameter focal-length network never runs. Unofficial; not affiliated with Apple.
+ONNX, TensorRT and ROS 2 for Apple's [Depth Pro 2](https://github.com/apple-aiml-research/ml-depth-pro-2) S and B, in two versions. Unofficial.
+
+| | Focal-free | Focal |
+| --- | --- | --- |
+| Input | image + `f_px` | image |
+| Output | depth (m) | depth (m) + estimated `f_px` |
+| For | calibrated cameras, robots | any photo |
+| Hugging Face | [S](https://huggingface.co/christianengel/DepthPro2-S-ONNX) · [B](https://huggingface.co/christianengel/DepthPro2-B-ONNX) | [focal + auto S/B](https://huggingface.co/christianengel/DepthPro2-focal-ONNX) |
+
+The focal version adds Apple's 23.5M-parameter focal network. Its guess: 3.4% off on a room-scale robot camera, 17% on a gripper close-up. Pass `fx` when you have it. [Browser demo](https://huggingface.co/spaces/christianengel/DepthPro2-ONNX).
+
+Focal-free speed:
 
 | Model | Runtime | ms/frame | FPS | VRAM MB | Disk MB | AbsRel |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -17,17 +28,24 @@ RTX 3090 (Ryzen 9 5950X for CPU), 480x640, one frame per call, host array to hos
 
 ## Use
 
-[DepthPro2-S-ONNX](https://huggingface.co/christianengel/DepthPro2-S-ONNX) · [DepthPro2-B-ONNX](https://huggingface.co/christianengel/DepthPro2-B-ONNX) · [Space](https://huggingface.co/spaces/christianengel/DepthPro2-ONNX)
-
 ```python
 from huggingface_hub import hf_hub_download
 from depthpro2_onnx.runtime import load, to_pixel_values
 
+# Focal-free: you know fx (CameraInfo.k[0]).
 graph = load(hf_hub_download("christianengel/DepthPro2-S-ONNX", "onnx/model_stream4_fp16.onnx"))
 depth = graph.infer(to_pixel_values(rgb), f_px=fx)  # rgb: uint8 480x640x3; meters, state kept
+
+# Focal: you don't.
+import onnxruntime as ort
+auto = ort.InferenceSession(
+    hf_hub_download("christianengel/DepthPro2-focal-ONNX", "onnx/auto_s_fp16.onnx"),
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+depth, f_px = auto.run(None, {"pixel_values": to_pixel_values(rgb)})
 ```
 
-[ROS 2 node](ros2/) · [TensorRT on Jetson](jetson/build_tensorrt.sh)
+[ROS 2 node](ros2/) (focal-free) · [TensorRT on Jetson](jetson/build_tensorrt.sh) (both)
 
 ## Findings
 
@@ -42,6 +60,8 @@ uv sync --extra export --group bench
 uv run python fixtures/make_fixture.py                      # fixture + PyTorch references
 uv run python export_onnx.py --size S --out build/DepthPro2-S
 scripts/verify_all.sh                                       # parity gate, every graph
+uv run python fixtures/make_focal_refs.py && uv run python export_focal.py --out build/DepthPro2-focal
+scripts/verify_focal_all.sh                                 # focal within 1%, auto depth gate
 uv run python benchmark.py
 ros2/test/run_in_docker.sh build/DepthPro2-S/onnx S         # ROS 2 end-to-end
 ```

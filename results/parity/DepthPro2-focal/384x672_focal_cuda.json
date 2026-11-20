@@ -1,0 +1,22 @@
+{
+ "graph": "focal.onnx",
+ "provider": "CUDAExecutionProvider",
+ "config": {
+  "exporter_commit": "fede4fb",
+  "focal_model": "apple/DepthPro2-focal",
+  "focal_revision": "f1be7a9715938d76c687554156357f0492266f02",
+  "height": 384,
+  "mode": "focal",
+  "opset": 18,
+  "precision": "fp32",
+  "width": 672
+ },
+ "focal_max_rel": 0.0001584115847748091,
+ "focal_mean_rel": 6.252736012917334e-05,
+ "gate": {
+  "focal_rel_lt": 0.01,
+  "abs_rel_lt": 0.01,
+  "delta1_gt": 0.995,
+  "passed": true
+ }
+}
