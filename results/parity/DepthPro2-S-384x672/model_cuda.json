@@ -1,0 +1,40 @@
+{
+ "graph": "model.onnx",
+ "provider": "CUDAExecutionProvider",
+ "config": {
+  "base_model": "apple/DepthPro2-S",
+  "base_revision": "30e647174773e3bdf5ab5dcc2a815c38cec5fdd8",
+  "exporter_commit": "03aaf0c",
+  "focal_estimator_removed": true,
+  "frames": 1,
+  "height": 384,
+  "mode": "single",
+  "opset": 18,
+  "precision": "fp32",
+  "width": 672
+ },
+ "vs_fp32": {
+  "abs_rel": 0.0004568488295152609,
+  "delta1": 1.0,
+  "max_abs_m": 9.222747802734375,
+  "max_abs_near_m": 0.02849578857421875,
+  "cosine": 0.9999985899309661,
+  "valid_px": 2569455,
+  "nonfinite_px": 0
+ },
+ "vs_bf16": {
+  "abs_rel": 0.004180863219329222,
+  "delta1": 0.999989881650334,
+  "max_abs_m": 99.38626098632812,
+  "max_abs_near_m": 0.2846364974975586,
+  "cosine": 0.999812423085652,
+  "valid_px": 2569589,
+  "nonfinite_px": 0
+ },
+ "gate": {
+  "abs_rel_lt": 0.01,
+  "delta1_gt": 0.995,
+  "applies": true,
+  "passed": true
+ }
+}

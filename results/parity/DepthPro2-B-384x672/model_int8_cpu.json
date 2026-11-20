@@ -1,0 +1,41 @@
+{
+ "graph": "model_int8.onnx",
+ "provider": "CPUExecutionProvider",
+ "config": {
+  "base_model": "apple/DepthPro2-B",
+  "base_revision": "281dc9883dea8fba21d5d78734291ca5d4f159d6",
+  "exporter_commit": "03aaf0c",
+  "focal_estimator_removed": true,
+  "frames": 1,
+  "height": 384,
+  "mode": "single",
+  "opset": 18,
+  "precision": "int8",
+  "quantization": "weight-only MatMulNBits, 8 bit, block 32",
+  "width": 672
+ },
+ "vs_fp32": {
+  "abs_rel": 0.0025669857544036653,
+  "delta1": 0.9999844285269387,
+  "max_abs_m": 102.77000427246094,
+  "max_abs_near_m": 0.3216981887817383,
+  "cosine": 0.9998035574037277,
+  "valid_px": 2568800,
+  "nonfinite_px": 0
+ },
+ "vs_bf16": {
+  "abs_rel": 0.004073264171538499,
+  "delta1": 0.9999338190496027,
+  "max_abs_m": 252.84442138671875,
+  "max_abs_near_m": 0.41225433349609375,
+  "cosine": 0.9994817842286426,
+  "valid_px": 2568715,
+  "nonfinite_px": 0
+ },
+ "gate": {
+  "abs_rel_lt": 0.01,
+  "delta1_gt": 0.995,
+  "applies": false,
+  "passed": true
+ }
+}
