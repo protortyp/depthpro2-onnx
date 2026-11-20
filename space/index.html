@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Depth Pro 2 ONNX, focal-free (unofficial)</title>
+<style>
+  :root { color-scheme: dark; --bg: #1a1a19; --panel: #232322; --text: #f0efec; --muted: #c3c2b7;
+          --line: #3a3a37; --accent: #3987e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 28px 20px 48px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  p.lead { color: var(--muted); margin: 0 0 4px; }
+  a { color: var(--accent); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin: 22px 0;
+              padding: 16px; background: var(--panel); border-radius: 8px; }
+  label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 13px; }
+  input, select, button { font: inherit; color: var(--text); background: var(--bg);
+                          border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+  input[type=number] { width: 110px; }
+  button { background: var(--accent); border-color: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  figure { margin: 0; }
+  canvas { width: 100%; height: auto; background: var(--panel); border-radius: 8px; display: block; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  #status { min-height: 1.5em; margin: 14px 0 0; color: var(--muted); }
+  #readout { font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 28px; }
+  @media (max-width: 760px) { .views { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Depth Pro 2 ONNX, focal-free (unofficial)</h1>
+  <p class="lead">Metric depth from one photo and a focal length you already know, running in your
+    browser with ONNX Runtime Web. Nothing is uploaded.</p>
+  <p class="lead"><a href="https://huggingface.co/christianengel/DepthPro2-S-ONNX">Model</a> ·
+    <a href="https://github.com/protortyp/depthpro2-onnx">Code, ROS 2 node, TensorRT</a></p>
+
+  <div class="controls">
+    <label>Photo <input type="file" id="file" accept="image/*"></label>
+    <label>Focal length as
+      <select id="focalMode">
+        <option value="fov">horizontal FOV (degrees)</option>
+        <option value="fx">fx in pixels of the photo</option>
+      </select>
+    </label>
+    <label>Value <input type="number" id="focal" value="65.6" step="0.1" min="0.1"></label>
+    <label>Size
+      <select id="size">
+        <option value="480x640">480x640 (4:3)</option>
+        <option value="384x672">384x672 (16:9)</option>
+      </select>
+    </label>
+    <button id="run" disabled>Estimate depth</button>
+  </div>
+  <div id="status">Loading ONNX Runtime…</div>
+
+  <div class="views">
+    <figure><canvas id="input" width="640" height="480"></canvas>
+      <figcaption>Model input: scaled to cover, center-cropped</figcaption></figure>
+    <figure><canvas id="depth" width="640" height="480"></canvas>
+      <figcaption>Depth, red near, blue far. Hover for meters. <span id="readout"></span></figcaption></figure>
+  </div>
+
+  <p class="note">DepthPro2-S (24M parameters), FP16 graph, focal-length network removed.
+    Weights: Apple Machine Learning Research Model License, <strong>non-commercial research use
+    only</strong>. Not affiliated with or endorsed by Apple. Example photo: Apple's
+    <a href="https://github.com/apple-aiml-research/ml-depth-pro-2">ml-depth-pro-2</a> sample, loaded from GitHub.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/ort.webgpu.min.js"></script>
+<script>
+const REPO = "https://huggingface.co/christianengel/DepthPro2-S-ONNX/resolve/main/";
+const EXAMPLE = "https://raw.githubusercontent.com/apple-aiml-research/ml-depth-pro-2/aa389cb/assets/example.jpg";
+const $ = (id) => document.getElementById(id);
+const sessions = {};
+let image = null, depth = null, backend = null;
+
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/";
+
+function status(text) { $("status").textContent = text; }
+
+async function session(size) {
+  if (sessions[size]) return sessions[size];
+  // config.json first: the Hub counts a model download by this file.
+  await fetch(REPO + "config.json");
+  const file = size === "480x640" ? "onnx/model_fp16.onnx" : `onnx/${size}/model_fp16.onnx`;
+  status(`Downloading ${file} (51 MB, cached by the browser afterwards)…`);
+  const bytes = new Uint8Array(await (await fetch(REPO + file)).arrayBuffer());
+  const providers = "gpu" in navigator ? ["webgpu", "wasm"] : ["wasm"];
+  for (const ep of providers) {
+    try {
+      sessions[size] = await ort.InferenceSession.create(bytes, { executionProviders: [ep] });
+      backend = ep;
+      return sessions[size];
+    } catch (err) { console.warn(`${ep} failed`, err); }
+  }
+  throw new Error("No execution provider could load the model.");
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function coverCrop(img, h, w) {
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const sw = Math.max(w, Math.round(img.naturalWidth * scale));
+  const sh = Math.max(h, Math.round(img.naturalHeight * scale));
+  const canvas = $("input");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, -Math.floor((sw - w) / 2), -Math.floor((sh - h) / 2), sw, sh);
+  return { pixels: ctx.getImageData(0, 0, w, h).data, scale };
+}
+
+// Turbo colormap (Google, Apache-2.0), polynomial approximation.
+function turbo(t) {
+  t = Math.min(1, Math.max(0, t));
+  const r = 0.13572138 + t * (4.6153926 + t * (-42.66032258 + t * (132.13108234 + t * (-152.94239396 + t * 59.28637943))));
+  const g = 0.09140261 + t * (2.19418839 + t * (4.84296658 + t * (-14.18503333 + t * (4.27729857 + t * 2.82956604))));
+  const b = 0.1066733 + t * (12.64194608 + t * (-60.58204836 + t * (110.36276771 + t * (-89.90310912 + t * 27.34824973))));
+  return [r, g, b].map((v) => Math.round(255 * Math.min(1, Math.max(0, v))));
+}
+
+function percentile(sorted, p) { return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]; }
+
+function drawDepth(values, h, w) {
+  const finite = Float32Array.from(values.filter(Number.isFinite)).sort();
+  const near = percentile(finite, 0.02), far = percentile(finite, 0.98);
+  const canvas = $("depth");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  const out = ctx.createImageData(w, h);
+  for (let i = 0; i < values.length; i++) {
+    const d = Math.min(far, Math.max(near, Number.isFinite(values[i]) ? values[i] : far));
+    const [r, g, b] = turbo((1 / d - 1 / far) / (1 / near - 1 / far));
+    out.data.set([r, g, b, 255], 4 * i);
+  }
+  ctx.putImageData(out, 0, 0);
+  return { near, far, median: percentile(finite, 0.5) };
+}
+
+async function run() {
+  if (!image) return;
+  $("run").disabled = true;
+  try {
+    const [h, w] = $("size").value.split("x").map(Number);
+    const sess = await session($("size").value);
+    const { pixels, scale } = coverCrop(image, h, w);
+    const value = Number($("focal").value);
+    const fPx = $("focalMode").value === "fx" ? value * scale : 0.5 * w / Math.tan(value * Math.PI / 360);
+    const chw = new Float32Array(3 * h * w);
+    for (let i = 0; i < h * w; i++) for (let c = 0; c < 3; c++) chw[c * h * w + i] = pixels[4 * i + c] / 255;
+    status(`Running on ${backend}…`);
+    const start = performance.now();
+    const result = await sess.run({
+      pixel_values: new ort.Tensor("float32", chw, [1, 3, h, w]),
+      f_px: new ort.Tensor("float32", Float32Array.of(fPx), [1]),
+    });
+    const ms = performance.now() - start;
+    depth = { values: result.depth_meters.data, h, w };
+    const s = drawDepth(depth.values, h, w);
+    status(`${backend}, ${ms.toFixed(0)} ms. f_px ${fPx.toFixed(1)}. Depth 2nd-98th percentile ` +
+           `${s.near.toFixed(2)}-${s.far.toFixed(2)} m, median ${s.median.toFixed(2)} m.`);
+  } catch (err) {
+    status(`Error: ${err.message}`);
+    console.error(err);
+  } finally {
+    $("run").disabled = false;
+  }
+}
+
+$("depth").addEventListener("mousemove", (e) => {
+  if (!depth) return;
+  const rect = e.target.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / rect.width * depth.w);
+  const y = Math.floor((e.clientY - rect.top) / rect.height * depth.h);
+  const d = depth.values[y * depth.w + x];
+  $("readout").textContent = Number.isFinite(d) ? `${d.toFixed(2)} m at (${x}, ${y})` : "infinitely far";
+});
+$("depth").addEventListener("mouseleave", () => { $("readout").textContent = ""; });
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  image = await loadImage(URL.createObjectURL(file));
+  coverCrop(image, ...$("size").value.split("x").map(Number));
+});
+$("size").addEventListener("change", () => { if (image) coverCrop(image, ...$("size").value.split("x").map(Number)); });
+$("run").addEventListener("click", run);
+
+(async () => {
+  try {
+    image = await loadImage(EXAMPLE);
+    coverCrop(image, 480, 640);
+    status("Example loaded (horizontal FOV 65.6°). Press Estimate depth, or pick your own photo.");
+  } catch {
+    status("Pick a photo to start.");
+  }
+  $("run").disabled = false;
+})();
+</script>
+</body>
+</html>

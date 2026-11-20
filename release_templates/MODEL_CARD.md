@@ -18,7 +18,7 @@ tags:
 
 # Depth Pro 2 {{size}} ONNX, focal-free
 
-Unofficial ONNX export of [{{base_model}}](https://huggingface.co/{{base_model}}) for calibrated cameras. Pass the focal length `f_px`; the 23.5M-parameter focal-length network is gone. Output is metric depth in meters. Every graph passes a parity gate against PyTorch. Not affiliated with or endorsed by Apple.
+Unofficial ONNX export of [{{base_model}}](https://huggingface.co/{{base_model}}) for calibrated cameras. Pass the focal length `f_px`; the 23.5M-parameter focal-length network is gone. Output is metric depth in meters. Every graph passes a parity gate against PyTorch. [Try it in the browser](https://huggingface.co/spaces/christianengel/DepthPro2-ONNX). Not affiliated with or endorsed by Apple.
 
 > **Research use only.** These weights are a Model Derivative under the [Apple Machine Learning Research Model License](LICENSE): non-commercial research and academic use only. Apple Machine Learning Research Model is licensed under the Apple Machine Learning Research Model License Agreement.
 
