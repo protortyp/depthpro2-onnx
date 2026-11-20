@@ -10,3 +10,4 @@ fixtures/ref_outputs/
 fixtures/cache/
 fixtures/*.npz
 logs/
+release/

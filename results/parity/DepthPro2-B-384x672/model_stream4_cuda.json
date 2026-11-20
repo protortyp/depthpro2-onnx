@@ -4,7 +4,7 @@
  "config": {
   "base_model": "apple/DepthPro2-B",
   "base_revision": "281dc9883dea8fba21d5d78734291ca5d4f159d6",
-  "exporter_commit": "03aaf0c",
+  "exporter_commit": "f1569a2",
   "focal_estimator_removed": true,
   "height": 384,
   "mode": "stream",

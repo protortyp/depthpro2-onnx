@@ -71,6 +71,8 @@ I/O:
 
 {{benchmark_table}}
 
+TensorRT rows are engines from `build_tensorrt.sh` on that GPU. The stream engine copies its state through host memory each frame; ONNX Runtime keeps it on the GPU.
+
 ## TensorRT and Jetson
 
 On the device: `./build_tensorrt.sh onnx/model_fp16.onnx` ([script](build_tensorrt.sh), `trtexec --stronglyTyped`). Do not use `--fp16` or ONNX Runtime's TensorRT provider: both may run block 0's attention (logits up to 2e6) or B's LayerNorms in FP16 and return NaN.

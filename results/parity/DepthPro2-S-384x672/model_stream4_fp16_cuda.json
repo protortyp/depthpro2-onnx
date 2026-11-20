@@ -4,7 +4,7 @@
  "config": {
   "base_model": "apple/DepthPro2-S",
   "base_revision": "30e647174773e3bdf5ab5dcc2a815c38cec5fdd8",
-  "exporter_commit": "03aaf0c",
+  "exporter_commit": "f1569a2",
   "focal_estimator_removed": true,
   "fp32_attention_blocks": [
    0
