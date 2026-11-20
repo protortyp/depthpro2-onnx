@@ -1,0 +1,51 @@
+[
+ {
+  "graph": "focal",
+  "runtime": "ORT CUDA FP16",
+  "disk_mb": 52.835723,
+  "ms": 7.680268841795623,
+  "peak_vram_mb": 540.0
+ },
+ {
+  "graph": "focal",
+  "runtime": "ORT CPU FP32",
+  "disk_mb": 94.797491,
+  "ms": 297.4524804158136,
+  "peak_vram_mb": null
+ },
+ {
+  "graph": "focal",
+  "runtime": "TensorRT FP16 engine",
+  "disk_mb": 57.792948,
+  "ms": 3.30045388545841,
+  "peak_vram_mb": 434.0
+ },
+ {
+  "graph": "auto S",
+  "runtime": "ORT CUDA FP16",
+  "disk_mb": 104.030481,
+  "ms": 16.174843069165945,
+  "peak_vram_mb": 800.0
+ },
+ {
+  "graph": "auto S",
+  "runtime": "TensorRT FP16 engine",
+  "disk_mb": 113.618764,
+  "ms": 7.309588952921331,
+  "peak_vram_mb": 534.0
+ },
+ {
+  "graph": "auto B",
+  "runtime": "ORT CUDA FP16",
+  "disk_mb": 252.112737,
+  "ms": 22.569198976270854,
+  "peak_vram_mb": 1314.0
+ },
+ {
+  "graph": "auto B",
+  "runtime": "TensorRT FP16 engine",
+  "disk_mb": 260.692404,
+  "ms": 10.373190976679325,
+  "peak_vram_mb": 750.0
+ }
+]
